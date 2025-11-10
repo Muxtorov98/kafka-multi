@@ -9,65 +9,47 @@ use RdKafka\TopicConf;
 
 final class Producer
 {
-    private RdProducer $producer;
+    private ?RdProducer $producer = null;
 
-    public function __construct(private KafkaOptions $options)
-    {
-        $conf = new Conf();
-        $conf->set('metadata.broker.list', $this->options->brokers);
-
-        foreach ($this->options->producer as $key => $value) {
-            $conf->set((string)$key, (string)$value);
-        }
-
-        // SASL / SSL Security (optional)
-        if (!empty($this->options->security['protocol'])) {
-            $conf->set('security.protocol', $this->options->security['protocol']);
-        }
-
-        if (!empty($this->options->security['sasl'])) {
-            foreach ($this->options->security['sasl'] as $k => $v) {
-                $conf->set("sasl.$k", (string)$v);
-            }
-        }
-
-        $this->producer = new RdProducer($conf);
-    }
+    public function __construct(
+        private KafkaOptions $options
+    ) {}
 
     /**
-     * SYNC SEND
+     * Sync send with flush
      */
     public function send(string $topic, array $payload, ?string $key = null, array $headers = []): void
     {
-        $this->produceMessage($topic, RD_KAFKA_PARTITION_UA, $payload, $key, $headers);
-        $this->flush();
+        $this->produce($topic, RD_KAFKA_PARTITION_UA, $payload, $key, $headers);
+        $this->flushOrFail();
     }
 
     /**
-     * BATCH SEND (sync)
-     *
+     * Sync batch send with single flush
      * @param array<int, array> $messages
      */
     public function sendBatch(string $topic, array $messages, ?string $key = null, array $headers = []): void
     {
-        foreach ($messages as $payload) {
-            $this->produceMessage($topic, RD_KAFKA_PARTITION_UA, $payload, $key, $headers);
+        foreach ($messages as $p) {
+            $this->produce($topic, RD_KAFKA_PARTITION_UA, $p, $key, $headers);
         }
-        $this->flush();
+        $this->flushOrFail();
     }
 
     /**
-     * ASYNC SEND (Fire & Forget)
-     * Flush kutmaydi — juda tez ishlash uchun
+     * Fire & forget (no flush)
      */
     public function sendAsync(string $topic, array $payload, ?string $key = null, array $headers = []): void
     {
-        $this->produceMessage($topic, RD_KAFKA_PARTITION_UA, $payload, $key, $headers);
-        $this->producer->poll(0);
+        $this->produce($topic, RD_KAFKA_PARTITION_UA, $payload, $key, $headers);
+        $this->getProducer()->poll(0);
     }
 
     /**
-     * SEND WITH CALLBACK
+     * Sync send with callbacks
+     *
+     * @param callable $onSuccess fn():void
+     * @param callable|null $onError fn(\Throwable $e):void
      */
     public function sendWithCallback(
         string $topic,
@@ -78,12 +60,12 @@ final class Producer
         array $headers = []
     ): void {
         try {
-            $this->produceMessage($topic, RD_KAFKA_PARTITION_UA, $payload, $key, $headers);
-            $this->flush();
-            $onSuccess($payload);
+            $this->produce($topic, RD_KAFKA_PARTITION_UA, $payload, $key, $headers);
+            $this->flushOrFail();
+            $onSuccess();
         } catch (\Throwable $e) {
             if ($onError) {
-                $onError($e, $payload);
+                $onError($e);
                 return;
             }
             throw $e;
@@ -91,7 +73,7 @@ final class Producer
     }
 
     /**
-     * SEND TO SPECIFIC PARTITION
+     * Send to specific partition (sync)
      */
     public function sendToPartition(
         string $topic,
@@ -100,33 +82,126 @@ final class Producer
         ?string $key = null,
         array $headers = []
     ): void {
-        $this->produceMessage($topic, $partition, $payload, $key, $headers);
-        $this->flush();
+        $this->produce($topic, $partition, $payload, $key, $headers);
+        $this->flushOrFail();
     }
 
-    private function produceMessage(string $topic, int $partition, array $payload, ?string $key, array $headers): void
+    // ===== Internals =====================================================
+
+    private function getProducer(): RdProducer
     {
+        if ($this->producer instanceof RdProducer) {
+            return $this->producer;
+        }
+
+        $conf = new Conf();
+
+        // Brokers
+        $conf->set('metadata.broker.list', (string)$this->options->brokers);
+
+        // Producer native configs
+        $producerKafka = $this->options->producer['kafka'] ?? [];
+        foreach ($producerKafka as $k => $v) {
+            // librdkafka expects string values
+            $conf->set((string)$k, is_bool($v) ? ($v ? 'true' : 'false') : (string)$v);
+        }
+
+        // Optional: Security (SASL/SSL)
+        if (!empty($this->options->security['protocol'])) {
+            $conf->set('security.protocol', (string)$this->options->security['protocol']);
+        }
+        if (!empty($this->options->security['sasl']) && is_array($this->options->security['sasl'])) {
+            foreach ($this->options->security['sasl'] as $k => $v) {
+                $conf->set('sasl.' . (string)$k, (string)$v);
+            }
+        }
+        if (!empty($this->options->security['ssl']) && is_array($this->options->security['ssl'])) {
+            // Typical keys: ca.location, certificate.location, key.location, key.password
+            foreach ($this->options->security['ssl'] as $k => $v) {
+                $conf->set('ssl.' . (string)$k, (string)$v);
+            }
+        }
+
+        // Lazy create
+        $this->producer = new RdProducer($conf);
+        return $this->producer;
+    }
+
+    private function produce(
+        string $topic,
+        int $partition,
+        array $payload,
+        ?string $key,
+        array $headers
+    ): void {
+        $rd = $this->getProducer();
+
+        // Build topic (topic-level config optional)
         $topicConf = new TopicConf();
-        $rdTopic = $this->producer->newTopic($topic, $topicConf);
+        $rdTopic = $rd->newTopic($topic, $topicConf);
 
-        $msg = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $msg = $this->encode($payload);
+        $hdr = $this->normalizeHeaders($headers);
 
+        // producev supports headers directly
         $rdTopic->producev(
             $partition,
-            0,
+            0,          // msgflags (RD_KAFKA_MSG_F_BLOCK | 0)
             $msg,
             $key,
-            $headers ?: null
+            $hdr ?: null
         );
 
-        $this->producer->poll(0);
+        // drive delivery reports, etc.
+        $rd->poll(0);
     }
 
-    private function flush(): void
+    private function encode(array $payload): string
     {
-        $result = $this->producer->flush(1000);
-        if ($result !== RD_KAFKA_RESP_ERR_NO_ERROR) {
-            throw new \RuntimeException('Kafka flush failed: ' . $result);
+        $msg = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($msg === false) {
+            throw new \RuntimeException('Kafka Producer: JSON encode failed: ' . json_last_error_msg());
         }
+        return $msg;
+    }
+
+    /**
+     * librdkafka headers: array<string, string|int|float|null>
+     * We'll cast scalars to string; null allowed (header with no value)
+     *
+     * @param array<string, mixed> $headers
+     * @return array<string, ?string>
+     */
+    private function normalizeHeaders(array $headers): array
+    {
+        $out = [];
+        foreach ($headers as $k => $v) {
+            if ($v === null) {
+                $out[(string)$k] = null;
+                continue;
+            }
+            if (is_scalar($v)) {
+                $out[(string)$k] = (string)$v;
+                continue;
+            }
+            // Fallback: json-encode complex header values
+            $out[(string)$k] = json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+        return $out;
+    }
+
+    /**
+     * Flush with small retry loop
+     */
+    private function flushOrFail(int $timeoutMs = 1000, int $maxTries = 3): void
+    {
+        $rd = $this->getProducer();
+        for ($i = 0; $i < $maxTries; $i++) {
+            $result = $rd->flush($timeoutMs);
+            if ($result === RD_KAFKA_RESP_ERR_NO_ERROR) {
+                return;
+            }
+        }
+        throw new \RuntimeException('Kafka Producer: flush failed after retries');
     }
 }
