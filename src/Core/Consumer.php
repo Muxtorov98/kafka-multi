@@ -5,59 +5,63 @@ namespace Muxtorov98\Kafka;
 
 use Muxtorov98\Kafka\Contracts\ConsumerInterface;
 use Muxtorov98\Kafka\Contracts\KafkaHandlerInterface;
+use Muxtorov98\Kafka\Contracts\MiddlewareInterface;
 use Muxtorov98\Kafka\DTO\Message;
 use Muxtorov98\Kafka\DTO\Context;
 use Muxtorov98\Kafka\Middleware\Pipeline;
 use RdKafka\Conf;
 use RdKafka\KafkaConsumer;
+use RdKafka\TopicPartition;
 
 /**
- * PRO Consumer:
- * - Concurrency (fork per topic)
- * - Batch (effective batch size)
- * - Retry (per-handler override)
- * - Backoff (per-handler override)
- * - DLQ (per-handler or {topic}{dlq_suffix})
- * - Middlewares (global + local merge)
- * - Graceful shutdown
+ * PRO Consumer (eventsiz):
+ * - Concurrency (fork)
+ * - Batch consume
+ * - Retry + Backoff + DLQ (Producer bilan)
+ * - Global + local middlewares merge
+ * - Auto/Manual commit
+ * - Graceful shutdown (SIGINT/SIGTERM)
+ * - Kafka native config = alohida, custom config = alohida
  */
 final class Consumer implements ConsumerInterface
 {
     private bool $running = true;
 
+    /**
+     * @param array<string, array{
+     *   class: class-string,
+     *   group: ?string,
+     *   concurrency: int,
+     *   maxAttempts: int|null,
+     *   backoffMs: int|null,
+     *   middlewares: string[],
+     *   dlq: string|null,
+     *   priority: int,
+     *   batchSize: int
+     * }> $routing
+     */
     public function __construct(
         private KafkaOptions $options,
-        /** @var array<string, array{
-         *   class: class-string,
-         *   group: ?string,
-         *   concurrency: int,
-         *   maxAttempts: int|null,
-         *   backoffMs: int|null,
-         *   middlewares: string[],
-         *   dlq: string|null,
-         *   priority: int,
-         *   batchSize: int
-         * }> */
         private array $routing,
-        private ?Producer $producer = null // for DLQ publish
+        private ?Producer $producer = null // DLQ uchun ixtiyoriy
     ) {
         if (function_exists('pcntl_async_signals')) {
             pcntl_async_signals(true);
             pcntl_signal(SIGTERM, fn() => $this->running = false);
-            pcntl_signal(SIGINT, fn() => $this->running = false);
+            pcntl_signal(SIGINT,  fn() => $this->running = false);
         }
     }
 
     public function run(): int
     {
-        // Priority bo‘yicha ishga tushirishni hohlasangiz, bu yerda sort qilishingiz mumkin.
+        // (ixtiyoriy) priority bo‘yicha sort qilishingiz mumkin
         foreach ($this->routing as $topic => $meta) {
             $group = $meta['group'] ?? ('group-' . md5($topic));
             $this->forkGroupConsumer(
                 topic: $topic,
                 group: $group,
                 handlerClass: $meta['class'],
-                concurrency: $meta['concurrency'],
+                concurrency: max(1, (int)$meta['concurrency']),
                 meta: $meta
             );
         }
@@ -70,13 +74,13 @@ final class Consumer implements ConsumerInterface
 
     private function forkGroupConsumer(string $topic, string $group, string $handlerClass, int $concurrency, array $meta): void
     {
-        $children = max(1, $concurrency);
-        for ($i = 0; $i < $children; $i++) {
+        for ($i = 0; $i < $concurrency; $i++) {
             $pid = pcntl_fork();
             if ($pid === -1) {
                 throw new \RuntimeException('Cannot fork');
             }
             if ($pid === 0) {
+                // Child process
                 $this->consumeLoop($topic, $group, $handlerClass, $meta);
                 exit(0);
             }
@@ -85,12 +89,30 @@ final class Consumer implements ConsumerInterface
 
     private function consumeLoop(string $topic, string $group, string $handlerClass, array $meta): void
     {
+        // --- Build Kafka Conf (faqat native) ---
         $conf = new Conf();
-        $conf->set('metadata.broker.list', $this->options->brokers);
+        $conf->set('metadata.broker.list', (string)$this->options->brokers);
         $conf->set('group.id', $group);
 
-        foreach ($this->options->consumer as $k => $v) {
-            $conf->set((string)$k, (string)$v);
+        // consumer.kafka ichida faqat librdkafka paramlar bo‘lishi kerak
+        $consumerKafka = $this->options->consumer['kafka'] ?? [];
+        foreach ($consumerKafka as $k => $v) {
+            $conf->set((string)$k, is_bool($v) ? ($v ? 'true' : 'false') : (string)$v);
+        }
+
+        // Security (ixtiyoriy)
+        if (!empty($this->options->security['protocol'])) {
+            $conf->set('security.protocol', (string)$this->options->security['protocol']);
+        }
+        if (!empty($this->options->security['sasl']) && is_array($this->options->security['sasl'])) {
+            foreach ($this->options->security['sasl'] as $k => $v) {
+                $conf->set('sasl.' . (string)$k, (string)$v);
+            }
+        }
+        if (!empty($this->options->security['ssl']) && is_array($this->options->security['ssl'])) {
+            foreach ($this->options->security['ssl'] as $k => $v) {
+                $conf->set('ssl.' . (string)$k, (string)$v);
+            }
         }
 
         $consumer = new KafkaConsumer($conf);
@@ -99,7 +121,7 @@ final class Consumer implements ConsumerInterface
         /** @var KafkaHandlerInterface $handler */
         $handler = new $handlerClass();
 
-        // Effective settings (merge global + attribute)
+        // --- Effective settings (global + per-handler) ---
         $globalMaxAttempts = (int)($this->options->retry['max_attempts'] ?? 3);
         $globalBackoffMs   = (int)($this->options->retry['backoff_ms']   ?? 500);
         $globalDlqSuffix   = (string)($this->options->retry['dlq_suffix'] ?? '-dlq');
@@ -107,38 +129,40 @@ final class Consumer implements ConsumerInterface
         $effMaxAttempts = (int)($meta['maxAttempts'] ?? $globalMaxAttempts);
         $effBackoffMs   = (int)($meta['backoffMs']   ?? $globalBackoffMs);
 
-        $globalBatch    = (int)($this->options->consumer['batch_size'] ?? 1);
-        $effBatchSize   = max(1, (int)($meta['batchSize'] ?? $globalBatch));
+        // batch: handler override > global custom
+        $globalBatch  = (int)($this->options->consumer['batch_size'] ?? 1);
+        $effBatchSize = max(1, (int)($meta['batchSize'] ?? $globalBatch));
 
-        // Merge middlewares: global + per-handler
+        // merge middlewares: global + local (unique)
         $globalMws = is_array($this->options->middlewares ?? null) ? $this->options->middlewares : [];
         $localMws  = $meta['middlewares'] ?? [];
         $effMws    = array_values(array_unique([...$globalMws, ...$localMws]));
         $pipeline  = new Pipeline($effMws);
 
-        // Resolve DLQ topic
+        // DLQ topic
         $dlqTopic = $meta['dlq'] ?? ($topic . $globalDlqSuffix);
         if ($dlqTopic === $topic) {
-            // Oldini olish: DLQ original topic bilan bir xil bo‘lmasin
             $dlqTopic .= '-dead';
         }
 
+        // commit usuli
+        $autoCommit = $this->isAutoCommitEnabled($consumerKafka);
+
         $invoker = new HandlerInvoker();
 
-        // Main consume loop
+        // --- Main loop ---
         while ($this->running) {
             $msgs = [];
-            $deadlineMs = 1000; // poll window
-
-            // Batch collect
+            // collect batch
             for ($i = 0; $i < $effBatchSize; $i++) {
-                $msg = $consumer->consume($deadlineMs);
-                if ($msg === null) continue;
+                $msg = $consumer->consume(1000); // 1s poll
+                if ($msg === null) {
+                    continue;
+                }
 
                 if ($msg->err === RD_KAFKA_RESP_ERR_NO_ERROR) {
                     $payload = json_decode((string)$msg->payload, true) ?? [];
                     $headers = is_array($msg->headers) ? $msg->headers : [];
-
                     $dto = new Message(
                         topic: $msg->topic_name,
                         partition: $msg->partition,
@@ -147,12 +171,14 @@ final class Consumer implements ConsumerInterface
                         payload: $payload,
                         headers: $headers
                     );
-                    $msgs[] = $dto;
+                    // message object + underlying kafka message (for manual commit)
+                    $msgs[] = [$dto, $msg];
                 } elseif (in_array($msg->err, [RD_KAFKA_RESP_ERR__PARTITION_EOF, RD_KAFKA_RESP_ERR__TIMED_OUT], true)) {
-                    // idle; break early for responsiveness
+                    // idle / timeout – batchni erta yakunlash
                     break;
                 } else {
-                    // other errors - skip or log
+                    // boshqa xatolar: loglash mumkin
+                    // continue
                 }
             }
 
@@ -160,9 +186,10 @@ final class Consumer implements ConsumerInterface
                 continue;
             }
 
-            // Process each message with retry + middleware
-            foreach ($msgs as $dto) {
+            // process batch (retry per message)
+            foreach ($msgs as [$dto, $raw]) {
                 $attempt = 0;
+
                 while (true) {
                     $attempt++;
                     $ctx = new Context(
@@ -180,15 +207,21 @@ final class Consumer implements ConsumerInterface
                     );
 
                     try {
+                        // middleware pipeline → handler
                         $pipeline->handle($dto, $ctx, function (Message $m, Context $c) use ($handler, $invoker) {
                             $invoker->invoke($handler, $m);
                         });
 
-                        // success → break retry loop
-                        break;
+                        // success → manual commit (agar auto emas)
+                        if (!$autoCommit) {
+                            $tp = new TopicPartition($dto->topic, $dto->partition, $dto->offset + 1);
+                            $consumer->commitAsync($tp);
+                        }
+
+                        break; // success
                     } catch (\Throwable $e) {
                         if ($attempt >= $effMaxAttempts) {
-                            // Give up → DLQ
+                            // DLQ
                             if ($this->producer) {
                                 try {
                                     $this->producer->send($dlqTopic, [
@@ -204,21 +237,36 @@ final class Consumer implements ConsumerInterface
                                         ],
                                     ]);
                                 } catch (\Throwable) {
-                                    // DLQ send failed → swallow or log
+                                    // DLQ yuborishda xato – yutib yuboramiz (log qilishingiz mumkin)
                                 }
                             }
-                            // stop retry
-                            break;
+
+                            // manual commit? (xohishga qarab)
+                            // if (!$autoCommit) { $consumer->commitAsync(); }
+
+                            break; // give up
                         }
 
-                        // Backoff and retry
+                        // backoff va qayta urinish
                         usleep(max(0, $effBackoffMs) * 1000);
                     }
                 }
             }
         }
 
+        // shutdown
         $consumer->unsubscribe();
         $consumer->close();
+    }
+
+    private function isAutoCommitEnabled(array $consumerKafka): bool
+    {
+        // librdkafka default: enable.auto.commit = true
+        $v = $consumerKafka['enable.auto.commit'] ?? 'true';
+        if (is_bool($v)) {
+            return $v;
+        }
+        $s = strtolower((string)$v);
+        return $s === '1' || $s === 'true' || $s === 'yes' || $s === 'on';
     }
 }
