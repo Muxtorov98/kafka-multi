@@ -13,8 +13,9 @@ final class AutoDiscovery
 {
     /**
      * @return array<string, array{
+     *   topic: string,
      *   class: class-string,
-     *   group: ?string,
+     *   group: string,
      *   concurrency: int,
      *   maxAttempts: int|null,
      *   backoffMs: int|null,
@@ -29,6 +30,7 @@ final class AutoDiscovery
         $paths = $options->discovery['paths'] ?? [];
         $namespaces = $options->discovery['namespaces'] ?? [];
 
+        // 1. Autoload all handler files
         foreach ($paths as $path) {
             if (!is_dir($path)) {
                 continue;
@@ -40,23 +42,21 @@ final class AutoDiscovery
 
             /** @var SplFileInfo $file */
             foreach ($iterator as $file) {
-                if (!$file->isFile()) {
-                    continue;
-                }
+                if (!$file->isFile()) continue;
 
                 $realPath = $file->getRealPath();
-                if ($realPath === false || substr($realPath, -4) !== '.php') {
-                    continue;
-                }
+                if ($realPath === false || substr($realPath, -4) !== '.php') continue;
 
                 require_once $realPath;
             }
         }
 
+        // 2. Scan declared classes
         $map = [];
 
         foreach (get_declared_classes() as $class) {
-            // Namespace filter
+
+            // Check namespace
             if ($namespaces) {
                 $matched = false;
                 foreach ($namespaces as $ns) {
@@ -66,28 +66,32 @@ final class AutoDiscovery
                         break;
                     }
                 }
-                if (!$matched) {
-                    continue;
-                }
+                if (!$matched) continue;
             }
 
-            // Must implement interface
+            // Must implement KafkaHandlerInterface
             if (!is_subclass_of($class, KafkaHandlerInterface::class)) {
                 continue;
             }
 
             $rc = new \ReflectionClass($class);
             $attrs = $rc->getAttributes(KafkaChannel::class);
-            if (!$attrs) {
-                continue;
-            }
+
+            if (!$attrs) continue;
 
             /** @var KafkaChannel $ch */
             $ch = $attrs[0]->newInstance();
 
-            $map[$ch->topic] = [
+            $topic = $ch->topic;
+            $group = $ch->group ?: ('group_' . md5($topic.$class));
+
+            // ✅ Create unique key: topic + group
+            $key = "{$topic}:{$group}";
+
+            $map[$key] = [
+                'topic'       => $topic,
                 'class'       => $class,
-                'group'       => $ch->group,
+                'group'       => $group,
                 'concurrency' => max(1, (int)$ch->concurrency),
                 'maxAttempts' => $ch->maxAttempts,
                 'backoffMs'   => $ch->backoffMs,
