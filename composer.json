@@ -17,7 +17,7 @@
       "Muxtorov98\\Kafka\\Bridge\\Symfony\\": "src/Bridge/Symfony/"
     },
     "exclude-from-classmap": [
-      "src/Bridge/Laravel/Commands/KafkaWorkCommand.php"
+      "src/Bridge/Laravel/Commands/"
     ]
   },
   "extra": {
@@ -26,7 +26,9 @@
         "Muxtorov98\\Kafka\\Bridge\\Laravel\\KafkaServiceProvider"
       ]
     },
-    "yii\\bootstrap": "Muxtorov98\\Kafka\\Bridge\\Yii2\\Bootstrap"
+    "bootstrap": [
+      "Muxtorov98\\Kafka\\Bridge\\Yii2\\Bootstrap"
+    ]
   },
   "minimum-stability": "dev",
   "prefer-stable": true
