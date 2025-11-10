@@ -15,12 +15,10 @@
       "Muxtorov98\\Kafka\\Bridge\\Yii2\\": "src/Bridge/Yii2/",
       "Muxtorov98\\Kafka\\Bridge\\Laravel\\": "src/Bridge/Laravel/",
       "Muxtorov98\\Kafka\\Bridge\\Symfony\\": "src/Bridge/Symfony/"
-    }
-  },
-  "autoload-dev": {
-    "psr-4": {
-      "Muxtorov98\\Kafka\\Tests\\": "tests/"
-    }
+    },
+    "exclude-from-classmap": [
+      "src/Bridge/Laravel/Commands/KafkaWorkCommand.php"
+    ]
   },
   "extra": {
     "laravel": {
@@ -29,9 +27,6 @@
       ]
     }
   },
-  "exclude-from-classmap": [
-    "src/Bridge/Laravel/Commands/KafkaWorkCommand.php"
-  ],
   "minimum-stability": "dev",
   "prefer-stable": true
 }

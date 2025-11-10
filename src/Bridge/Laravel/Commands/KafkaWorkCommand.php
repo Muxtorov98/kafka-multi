@@ -1,6 +1,7 @@
 <?php
+declare(strict_types=1);
 
-namespace App\Console\Commands;
+namespace Muxtorov98\Kafka\Bridge\Laravel\Commands;
 
 use Illuminate\Console\Command;
 use Muxtorov98\Kafka\AutoDiscovery;
@@ -31,7 +32,7 @@ class KafkaWorkCommand extends Command
 
             WorkerPrinter::topicHeader($topic, $group, $concurrency);
 
-            // Preview mode only – no real forking
+            // Preview mode only
             for ($i = 1; $i <= $concurrency; $i++) {
                 $pid = random_int(1000, 9999);
                 WorkerPrinter::workerStart($topic, $group, $i, $pid);
@@ -42,12 +43,11 @@ class KafkaWorkCommand extends Command
 
         WorkerPrinter::allReady();
 
-        // Preview mode: don't start consumer
         if ($this->option('demo')) {
             return self::SUCCESS;
         }
 
-        // Start real worker consumer
+        // Start real Kafka workers
         $consumer = new Consumer(
             options: $options,
             routing: $routing,
