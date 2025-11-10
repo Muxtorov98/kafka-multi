@@ -17,6 +17,11 @@
       "Muxtorov98\\Kafka\\Bridge\\Symfony\\": "src/Bridge/Symfony/"
     }
   },
+  "autoload-dev": {
+    "psr-4": {
+      "Muxtorov98\\Kafka\\Tests\\": "tests/"
+    }
+  },
   "extra": {
     "laravel": {
       "providers": [
@@ -24,6 +29,9 @@
       ]
     }
   },
+  "exclude-from-classmap": [
+    "src/Bridge/Laravel/Commands/KafkaWorkCommand.php"
+  ],
   "minimum-stability": "dev",
   "prefer-stable": true
 }
