@@ -10,7 +10,6 @@ final class ConfigFactory
 {
     public static function create(ContainerInterface $container): KafkaOptions
     {
-        // Config Symfony parameters ichidan olinadi
         $config = $container->getParameter('kafka');
 
         if (!is_array($config)) {
