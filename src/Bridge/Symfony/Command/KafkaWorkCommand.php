@@ -12,8 +12,11 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-#[AsCommand(name: 'kafka:work', description: 'Run Kafka consumer workers')]
-class KafkaWorkCommand extends Command
+#[AsCommand(
+    name: 'kafka:work',
+    description: 'Run Kafka consumer workers'
+)]
+final class KafkaWorkCommand extends Command
 {
     public function __construct(
         private KafkaOptions $options,
@@ -33,11 +36,18 @@ class KafkaWorkCommand extends Command
 
         $output->writeln("<info>🔍 Kafka handlers discovered:</info>");
         foreach ($routing as $topic => $meta) {
-            $output->writeln("  • <comment>$topic</comment> → {$meta['class']} (group: {$meta['group']})");
+            $group = $meta['group'] ?? 'auto';
+            $output->writeln("  • <comment>{$topic}</comment> → {$meta['class']} (group: {$group})");
         }
 
         $output->writeln("<info>🚀 Starting Kafka workers...</info>");
 
-        return (new Consumer($this->options, $routing, $this->producer))->run();
+        $consumer = new Consumer(
+            options: $this->options,
+            routing: $routing,
+            producer: $this->producer
+        );
+
+        return $consumer->run();
     }
 }

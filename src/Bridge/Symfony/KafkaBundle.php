@@ -5,9 +5,9 @@ namespace Muxtorov98\Kafka\Bridge\Symfony;
 
 use Symfony\Component\HttpKernel\Bundle\Bundle;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
-use Muxtorov98\Kafka\Bridge\Symfony\KafkaExtension;
+use Muxtorov98\Kafka\Bridge\Symfony\DependencyInjection\KafkaExtension;
 
-class KafkaBundle extends Bundle
+final class KafkaBundle extends Bundle
 {
     public function getContainerExtension(): ?ExtensionInterface
     {
@@ -16,6 +16,7 @@ class KafkaBundle extends Bundle
 
     public function getPath(): string
     {
+        // Bundle path (PSR-4)
         return \dirname(__DIR__);
     }
 }

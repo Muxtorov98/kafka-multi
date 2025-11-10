@@ -1,28 +1,43 @@
 <?php
 declare(strict_types=1);
 
-namespace Muxtorov98\Kafka\Bridge\Symfony;
+namespace Muxtorov98\Kafka\Bridge\Symfony\DependencyInjection;
 
+use Muxtorov98\Kafka\Bridge\Symfony\ConfigFactory;
+use Muxtorov98\Kafka\Bridge\Symfony\KafkaPublisher;
+use Muxtorov98\Kafka\Bridge\Symfony\Command\KafkaWorkCommand;
 use Muxtorov98\Kafka\KafkaOptions;
+use Muxtorov98\Kafka\Producer;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Extension\Extension;
+use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\HttpKernel\KernelInterface;
 
-class KafkaExtension extends Extension
+final class KafkaExtension extends Extension
 {
     public function load(array $configs, ContainerBuilder $container): void
     {
-        $container->register(KafkaOptions::class, KafkaOptions::class)
-            ->setFactory([ConfigFactory::class, 'fromPhp'])
-            ->addArgument('%kernel.project_dir%/config/kafka.php')
-            ->setPublic(true);
+        // 1) KafkaOptions (config/kafka.php dan o‘qiladi, yo‘q bo‘lsa default)
+        $defOptions = new Definition(KafkaOptions::class);
+        $defOptions->setFactory([ConfigFactory::class, 'fromPhp']);
+        $defOptions->setArguments([new Reference('kernel')]); // KernelInterface
+        $defOptions->setAutowired(false)->setPublic(true);
+        $container->setDefinition(KafkaOptions::class, $defOptions);
 
-        $container->autowire(\Muxtorov98\Kafka\Producer::class)
-            ->setPublic(true);
+        // 2) Producer
+        $defProducer = new Definition(Producer::class);
+        $defProducer->setAutowired(true)->setPublic(true);
+        $container->setDefinition(Producer::class, $defProducer);
 
-        $container->autowire(KafkaPublisher::class)
-            ->setPublic(true);
+        // 3) Symfony-friendly Publisher (bridge)
+        $defPub = new Definition(KafkaPublisher::class);
+        $defPub->setAutowired(true)->setPublic(true);
+        $container->setDefinition(KafkaPublisher::class, $defPub);
 
-        $container->autowire(Command\KafkaWorkCommand::class)
-            ->addTag('console.command');
+        // 4) CLI Command: kafka:work
+        $defCmd = new Definition(KafkaWorkCommand::class);
+        $defCmd->setAutowired(true)->addTag('console.command');
+        $container->setDefinition(KafkaWorkCommand::class, $defCmd);
     }
 }

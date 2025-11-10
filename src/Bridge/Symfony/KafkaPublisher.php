@@ -8,12 +8,20 @@ use Muxtorov98\Kafka\KafkaPublisher as CorePublisher;
 final class KafkaPublisher
 {
     public function __construct(
-        private CorePublisher $core
+        private readonly CorePublisher $core
     ) {}
+
+    /**
+     * Simple send (recommended)
+     */
+    public function publish(string $topic, array $payload, ?string $key = null, array $headers = []): void
+    {
+        $this->core->send($topic, $payload, $key, $headers);
+    }
 
     public function send(string $topic, array $payload, ?string $key = null, array $headers = []): void
     {
-        $this->core->send($topic, $payload, $key, $headers);
+        $this->publish($topic, $payload, $key, $headers);
     }
 
     public function sendBatch(string $topic, array $messages, ?string $key = null, array $headers = []): void
@@ -26,8 +34,14 @@ final class KafkaPublisher
         $this->core->sendAsync($topic, $payload, $key, $headers);
     }
 
-    public function sendWithCallback(string $topic, array $payload, callable $onSuccess, ?callable $onError = null, ?string $key = null, array $headers = []): void
-    {
+    public function sendWithCallback(
+        string $topic,
+        array $payload,
+        callable $onSuccess,
+        ?callable $onError = null,
+        ?string $key = null,
+        array $headers = []
+    ): void {
         $this->core->sendWithCallback($topic, $payload, $onSuccess, $onError, $key, $headers);
     }
 
