@@ -83,20 +83,21 @@ final class Consumer implements ConsumerInterface
             }
 
             if ($pid === 0) {
-                // Child
+                // Child process
                 $pid = getmypid();
-                fwrite(STDOUT, "👷 Worker started | topic={$topic} | group={$group} | PID={$pid}\n");
+                fwrite(STDOUT, "  [WORKER-".str_pad((string)($i+1), 2, '0', STR_PAD_LEFT)."] PID={$pid} started\n");
                 $this->consumeLoop($topic, $group, $handlerClass, $meta);
                 exit(0);
             }
 
+            // Parent: save child PID
             $pids[] = $pid;
         }
 
-        // Parent — show final status once all workers are spawned
+        // Parent: only print ONCE for this topic
         $count = count($pids);
         if ($count > 0) {
-            fwrite(STDOUT, "✅ Ready & listening for messages...\n");
+            fwrite(STDOUT, "✅ Topic '{$topic}' has {$count} worker(s) running\n");
         }
     }
 
