@@ -20,24 +20,28 @@ class KafkaWorkCommand extends Command
 {
     public function __construct(
         private KafkaOptions $options,
-        private Producer $producer // optional DLQ & retry uchun kerak
+        private Producer $producer // DLQ & Retry uchun optional
     ) {
         parent::__construct();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // Auto-discovery: handlerlarni topib routing generatsiya qiladi
         $routing = AutoDiscovery::discover($this->options);
+
+        if (empty($routing)) {
+            $output->writeln("<comment>⚠️ No Kafka handlers found.</comment>");
+            return Command::SUCCESS;
+        }
 
         $output->writeln("<info>🔍 Kafka handlers discovered:</info>");
         foreach ($routing as $topic => $meta) {
-            $output->writeln("  • <comment>$topic</comment> → {$meta['class']} (group: {$meta['group']})");
+            $group = $meta['group'] ?? 'auto';
+            $output->writeln("  • <comment>{$topic}</comment> → {$meta['class']} (group: {$group})");
         }
 
         $output->writeln("<info>🚀 Starting Kafka workers...</info>");
 
-        // Consumerga routing + producer beriladi
         $consumer = new Consumer(
             options: $this->options,
             routing: $routing,

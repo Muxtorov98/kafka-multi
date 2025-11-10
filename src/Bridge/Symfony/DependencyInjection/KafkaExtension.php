@@ -1,29 +1,28 @@
 <?php
+declare(strict_types=1);
 
 namespace Muxtorov98\Kafka\Bridge\Symfony\DependencyInjection;
 
 use Muxtorov98\Kafka\KafkaOptions;
-use Symfony\Component\Config\FileLocator;
+use Symfony\Component\Config\Definition\Processor;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
-use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
 
 class KafkaExtension extends Extension
 {
     public function load(array $configs, ContainerBuilder $container): void
     {
-        // Merge config
-        $config = array_replace_recursive(...$configs);
+        $processor = new Processor();
+        $configuration = new KafkaConfiguration();
+        $config = $processor->processConfiguration($configuration, $configs);
 
-        // Register KafkaOptions as a service
+        // Kafka config as container parameter
+        $container->setParameter('kafka', $config);
+
+        // KafkaOptions as service
         $container->register(KafkaOptions::class, KafkaOptions::class)
-            ->setFactory([self::class, 'createOptions'])
+            ->setFactory([KafkaOptions::class, 'fromArray'])
             ->addArgument($config)
             ->setPublic(true);
-    }
-
-    public static function createOptions(array $config): KafkaOptions
-    {
-        return KafkaOptions::fromArray($config);
     }
 }
