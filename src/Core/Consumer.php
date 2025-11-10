@@ -74,16 +74,29 @@ final class Consumer implements ConsumerInterface
 
     private function forkGroupConsumer(string $topic, string $group, string $handlerClass, int $concurrency, array $meta): void
     {
+        $pids = [];
+
         for ($i = 0; $i < $concurrency; $i++) {
             $pid = pcntl_fork();
             if ($pid === -1) {
-                throw new \RuntimeException('Cannot fork');
+                throw new \RuntimeException('❌ Failed to fork worker');
             }
+
             if ($pid === 0) {
-                // Child process
+                // Child
+                $pid = getmypid();
+                fwrite(STDOUT, "👷 Worker started | topic={$topic} | group={$group} | PID={$pid}\n");
                 $this->consumeLoop($topic, $group, $handlerClass, $meta);
                 exit(0);
             }
+
+            $pids[] = $pid;
+        }
+
+        // Parent — show final status once all workers are spawned
+        $count = count($pids);
+        if ($count > 0) {
+            fwrite(STDOUT, "✅ Ready & listening for messages...\n");
         }
     }
 
