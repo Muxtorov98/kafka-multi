@@ -1,0 +1,28 @@
+{
+  "name": "muxtorov98/kafka-multi",
+  "description": "Universal Kafka for PHP (Yii2, Laravel, Symfony) — auto-discovery, retry, multi-group",
+  "type": "library",
+  "license": "MIT",
+  "require": {
+    "php": "^8.2",
+    "ext-rdkafka": "*",
+    "psr/log": "^3.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Muxtorov98\\Kafka\\": "src/Core/",
+      "Muxtorov98\\Kafka\\Bridge\\Yii2\\": "src/Bridge/Yii2/",
+      "Muxtorov98\\Kafka\\Bridge\\Laravel\\": "src/Bridge/Laravel/",
+      "Muxtorov98\\Kafka\\Bridge\\Symfony\\": "src/Bridge/Symfony/"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "Muxtorov98\\Kafka\\Bridge\\Laravel\\KafkaServiceProvider"
+      ]
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}
