@@ -12,14 +12,12 @@ use Muxtorov98\Kafka\Support\WorkerPrinter;
 
 final class KafkaController extends Controller
 {
-    public function actionWork(): int
+    /**
+     * Usage:
+     * php yii kafka/work
+     */
+    public function actionWork(KafkaOptions $options, Producer $producer): int
     {
-        /** @var KafkaOptions $options */
-        $options = \Yii::$container->get(KafkaOptions::class);
-
-        /** @var Producer $producer */
-        $producer = \Yii::$container->get(Producer::class);
-
         $routing = AutoDiscovery::discover($options);
 
         if (empty($routing)) {
@@ -45,6 +43,7 @@ final class KafkaController extends Controller
 
         WorkerPrinter::allReady();
 
+        // Real consumer run
         $consumer = new Consumer(
             options: $options,
             routing: $routing,
