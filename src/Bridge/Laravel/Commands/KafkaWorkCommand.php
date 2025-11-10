@@ -1,5 +1,4 @@
 <?php
-declare(strict_types=1);
 
 namespace Muxtorov98\Kafka\Bridge\Laravel\Commands;
 
@@ -26,19 +25,18 @@ class KafkaWorkCommand extends Command
 
         WorkerPrinter::info("Starting Kafka Workers...\n");
 
-        foreach ($routing as $topic => $meta) {
-            $group       = $meta['group'] ?? 'default-group';
-            $concurrency = (int) $meta['concurrency'];
+        foreach ($routing as $topic => $handlers) {
+            foreach ($handlers as $meta) {
+                $group       = $meta['group'] ?? 'default-group';
+                $concurrency = (int)$meta['concurrency'];
 
-            WorkerPrinter::topicHeader($topic, $group, $concurrency);
+                WorkerPrinter::topicHeader($topic, $group, $concurrency);
 
-            // Preview mode only
-            for ($i = 1; $i <= $concurrency; $i++) {
-                $pid = random_int(1000, 9999);
-                WorkerPrinter::workerStart($topic, $group, $i, $pid);
+                for ($i = 1; $i <= $concurrency; $i++) {
+                    $pid = random_int(1000, 9999);
+                    WorkerPrinter::workerStart($topic, $group, $i, $pid);
+                }
             }
-
-            WorkerPrinter::topicReady($topic, $concurrency);
         }
 
         WorkerPrinter::allReady();
@@ -47,7 +45,6 @@ class KafkaWorkCommand extends Command
             return self::SUCCESS;
         }
 
-        // Start real Kafka workers
         $consumer = new Consumer(
             options: $options,
             routing: $routing,

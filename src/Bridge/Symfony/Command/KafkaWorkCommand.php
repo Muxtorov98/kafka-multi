@@ -31,21 +31,23 @@ class KafkaWorkCommand extends Command
         $routing = AutoDiscovery::discover($this->options);
 
         if (empty($routing)) {
-            WorkerPrinter::info("No Kafka handlers found.");
+            WorkerPrinter::warning('No Kafka handlers found.');
             return Command::SUCCESS;
         }
 
-        WorkerPrinter::info("Starting Kafka Workers...");
+        WorkerPrinter::info('Starting Kafka Workers...');
 
-        foreach ($routing as $topic => $meta) {
-            $group = $meta['group'];
-            $concurrency = (int) $meta['concurrency'];
+        foreach ($routing as $topic => $handlers) {
+            foreach ($handlers as $meta) {
+                $group       = $meta['group'] ?? 'auto';
+                $concurrency = (int)$meta['concurrency'];
 
-            WorkerPrinter::topicHeader($topic, $group, $concurrency);
+                WorkerPrinter::topicHeader($topic, $group, $concurrency);
 
-            for ($i = 1; $i <= $concurrency; $i++) {
-                $pid = 1000 + rand(10, 99); // Real PID inside Consumer
-                WorkerPrinter::workerStart($topic, $group, $i, $pid);
+                for ($i = 1; $i <= $concurrency; $i++) {
+                    $pid = random_int(1000, 9999);
+                    WorkerPrinter::workerStart($topic, $group, $i, $pid);
+                }
             }
         }
 

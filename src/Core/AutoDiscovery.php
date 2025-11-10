@@ -12,10 +12,9 @@ use SplFileInfo;
 final class AutoDiscovery
 {
     /**
-     * @return array<string, array{
-     *   topic: string,
+     * @return array<string, array<int, array{
      *   class: class-string,
-     *   group: string,
+     *   group: ?string,
      *   concurrency: int,
      *   maxAttempts: int|null,
      *   backoffMs: int|null,
@@ -23,14 +22,24 @@ final class AutoDiscovery
      *   dlq: string|null,
      *   priority: int,
      *   batchSize: int
-     * }>
+     * }>>
+     *
+     * Format:
+     * [
+     *   'order-created' => [
+     *       ['class' => H1::class, 'group' => 'order-service', ...],
+     *       ['class' => H2::class, 'group' => 'analytics-group', ...],
+     *   ],
+     *   'payment-failed' => [
+     *       ['class' => H3::class, 'group' => 'billing-service', ...],
+     *   ],
+     * ]
      */
     public static function discover(KafkaOptions $options): array
     {
         $paths = $options->discovery['paths'] ?? [];
         $namespaces = $options->discovery['namespaces'] ?? [];
 
-        // 1. Autoload all handler files
         foreach ($paths as $path) {
             if (!is_dir($path)) {
                 continue;
@@ -42,21 +51,23 @@ final class AutoDiscovery
 
             /** @var SplFileInfo $file */
             foreach ($iterator as $file) {
-                if (!$file->isFile()) continue;
+                if (!$file->isFile()) {
+                    continue;
+                }
 
                 $realPath = $file->getRealPath();
-                if ($realPath === false || substr($realPath, -4) !== '.php') continue;
+                if ($realPath === false || substr($realPath, -4) !== '.php') {
+                    continue;
+                }
 
                 require_once $realPath;
             }
         }
 
-        // 2. Scan declared classes
         $map = [];
 
         foreach (get_declared_classes() as $class) {
-
-            // Check namespace
+            // Namespace filter
             if ($namespaces) {
                 $matched = false;
                 foreach ($namespaces as $ns) {
@@ -66,32 +77,28 @@ final class AutoDiscovery
                         break;
                     }
                 }
-                if (!$matched) continue;
+                if (!$matched) {
+                    continue;
+                }
             }
 
-            // Must implement KafkaHandlerInterface
+            // Must implement interface
             if (!is_subclass_of($class, KafkaHandlerInterface::class)) {
                 continue;
             }
 
             $rc = new \ReflectionClass($class);
             $attrs = $rc->getAttributes(KafkaChannel::class);
-
-            if (!$attrs) continue;
+            if (!$attrs) {
+                continue;
+            }
 
             /** @var KafkaChannel $ch */
             $ch = $attrs[0]->newInstance();
 
-            $topic = $ch->topic;
-            $group = $ch->group ?: ('group_' . md5($topic.$class));
-
-            // ✅ Create unique key: topic + group
-            $key = "{$topic}:{$group}";
-
-            $map[$key] = [
-                'topic'       => $topic,
+            $meta = [
                 'class'       => $class,
-                'group'       => $group,
+                'group'       => $ch->group,
                 'concurrency' => max(1, (int)$ch->concurrency),
                 'maxAttempts' => $ch->maxAttempts,
                 'backoffMs'   => $ch->backoffMs,
@@ -100,6 +107,10 @@ final class AutoDiscovery
                 'priority'    => (int)$ch->priority,
                 'batchSize'   => max(1, (int)$ch->batchSize),
             ];
+
+            // ✅ Append: topic uchun bir nechta handler bo‘lishi mumkin
+            $map[$ch->topic] ??= [];
+            $map[$ch->topic][] = $meta;
         }
 
         return $map;
