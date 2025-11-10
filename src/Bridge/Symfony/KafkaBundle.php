@@ -1,10 +1,10 @@
 <?php
+declare(strict_types=1);
 
 namespace Muxtorov98\Kafka\Bridge\Symfony;
 
 use Symfony\Component\HttpKernel\Bundle\Bundle;
 use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
-use Muxtorov98\Kafka\Bridge\Symfony\DependencyInjection\KafkaExtension;
 
 class KafkaBundle extends Bundle
 {

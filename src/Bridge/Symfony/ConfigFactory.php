@@ -4,16 +4,19 @@ declare(strict_types=1);
 namespace Muxtorov98\Kafka\Bridge\Symfony;
 
 use Muxtorov98\Kafka\KafkaOptions;
-use Symfony\Component\DependencyInjection\ContainerInterface;
 
 final class ConfigFactory
 {
-    public static function create(ContainerInterface $container): KafkaOptions
+    public static function fromPhp(string $path): KafkaOptions
     {
-        $config = $container->getParameter('kafka');
+        if (!file_exists($path)) {
+            throw new \RuntimeException("Kafka config file not found: {$path}");
+        }
+
+        $config = require $path;
 
         if (!is_array($config)) {
-            throw new \RuntimeException("Kafka configuration must be an array. Given: " . gettype($config));
+            throw new \RuntimeException("Kafka config must return array in: {$path}");
         }
 
         return KafkaOptions::fromArray($config);
