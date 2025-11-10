@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace Muxtorov98\Kafka\Bridge\Symfony\Command;
 
-use Muxtorov98\Kafka\AutoDiscovery;
+use Muxtorov98\Kafka\Bridge\Symfony\SymfonyAutoDiscovery;
 use Muxtorov98\Kafka\Consumer;
 use Muxtorov98\Kafka\KafkaOptions;
 use Muxtorov98\Kafka\Producer;
@@ -11,6 +11,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\HttpKernel\KernelInterface;
 
 #[AsCommand(
     name: 'kafka:work',
@@ -20,14 +21,19 @@ class KafkaWorkCommand extends Command
 {
     public function __construct(
         private KafkaOptions $options,
-        private Producer $producer // DLQ & Retry uchun optional
+        private Producer $producer,
+        private KernelInterface $kernel, // for reading project_dir
     ) {
         parent::__construct();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $routing = AutoDiscovery::discover($this->options);
+        // Symfony-based AutoDiscovery
+        $routing = SymfonyAutoDiscovery::discover(
+            $this->options,
+            $this->kernel->getProjectDir()
+        );
 
         if (empty($routing)) {
             $output->writeln("<comment>⚠️ No Kafka handlers found.</comment>");
