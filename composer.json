@@ -25,7 +25,8 @@
       "providers": [
         "Muxtorov98\\Kafka\\Bridge\\Laravel\\KafkaServiceProvider"
       ]
-    }
+    },
+    "yii\\bootstrap": "Muxtorov98\\Kafka\\Bridge\\Yii2\\Bootstrap"
   },
   "minimum-stability": "dev",
   "prefer-stable": true
