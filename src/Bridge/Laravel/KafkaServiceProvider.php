@@ -11,6 +11,7 @@ final class KafkaServiceProvider extends ServiceProvider
 {
     public function register()
     {
+        // Package config merge
         $this->mergeConfigFrom(__DIR__.'/config/kafka.php', 'kafka');
 
         $this->app->singleton(KafkaOptions::class, function ($app) {
@@ -24,12 +25,19 @@ final class KafkaServiceProvider extends ServiceProvider
 
     public function boot()
     {
+        // Allow publishing config to project config/kafka.php
         $this->publishes([
             __DIR__.'/config/kafka.php' => config_path('kafka.php'),
         ], 'config');
 
         if ($this->app->runningInConsole()) {
-            $this->commands([Commands\KafkaWorkCommand::class]);
+
+            // ❗ If project already has user's custom KafkaWorkCommand, DO NOT load package command
+            if (!class_exists(\App\Console\Commands\KafkaWorkCommand::class)) {
+                $this->commands([
+                    \Muxtorov98\Kafka\Bridge\Laravel\Commands\KafkaWorkCommand::class
+                ]);
+            }
         }
     }
 }
