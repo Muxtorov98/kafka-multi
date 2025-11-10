@@ -12,12 +12,14 @@ use Muxtorov98\Kafka\Support\WorkerPrinter;
 
 final class KafkaController extends Controller
 {
-    /**
-     * Usage:
-     * php yii kafka/work
-     */
-    public function actionWork(KafkaOptions $options, Producer $producer): int
+    public function actionWork(): int
     {
+        /** @var KafkaOptions $options */
+        $options = \Yii::$container->get(KafkaOptions::class);
+
+        /** @var Producer $producer */
+        $producer = \Yii::$container->get(Producer::class);
+
         $routing = AutoDiscovery::discover($options);
 
         if (empty($routing)) {
@@ -25,11 +27,11 @@ final class KafkaController extends Controller
             return self::EXIT_CODE_NORMAL;
         }
 
-        WorkerPrinter::info("[INFO] Starting Kafka Workers...\n");
+        WorkerPrinter::info("Starting Kafka Workers...\n");
 
         foreach ($routing as $topic => $handlers) {
             foreach ($handlers as $meta) {
-                $group       = $meta['group'] ?? 'default-group';
+                $group = $meta['group'] ?? 'default-group';
                 $concurrency = (int)$meta['concurrency'];
 
                 WorkerPrinter::topicHeader($topic, $group, $concurrency);
@@ -43,7 +45,6 @@ final class KafkaController extends Controller
 
         WorkerPrinter::allReady();
 
-        // Real consumer run
         $consumer = new Consumer(
             options: $options,
             routing: $routing,
