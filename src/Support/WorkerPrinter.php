@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Muxtorov98\Kafka;
+namespace Muxtorov98\Kafka\Support;
 
 final class WorkerPrinter
 {
