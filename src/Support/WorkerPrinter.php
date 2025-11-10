@@ -1,47 +1,41 @@
 <?php
+
 declare(strict_types=1);
 
-namespace Muxtorov98\Kafka\Support;
+namespace Muxtorov98\Kafka;
 
-/**
- * Unified & Colored CLI output for Kafka Workers
- * Works for Laravel, Symfony, Yii2
- */
 final class WorkerPrinter
 {
+    private const BLUE = "\033[34m";
+    private const GREEN = "\033[32m";
+    private const YELLOW = "\033[33m";
+    private const RED = "\033[31m";
+    private const RESET = "\033[0m";
+
     public static function info(string $message): void
     {
-        self::line("\033[32m[INFO]\033[0m {$message}");
-    }
-
-    public static function ok(string $message): void
-    {
-        self::line("\033[32m[OK]\033[0m {$message}");
-    }
-
-    public static function error(string $message): void
-    {
-        self::line("\033[31m[ERROR]\033[0m {$message}");
+        echo self::GREEN . "[INFO] " . self::RESET . $message . PHP_EOL;
     }
 
     public static function topicHeader(string $topic, string $group, int $concurrency): void
     {
-        self::line("\n\033[36mTopic:\033[0m {$topic} (group={$group}, concurrency={$concurrency})");
+        echo PHP_EOL;
+        echo self::YELLOW . "Topic: {$topic} " . self::RESET . "(group={$group}, concurrency={$concurrency})" . PHP_EOL;
     }
 
     public static function workerStart(string $topic, string $group, int $index, int $pid): void
     {
-        $num = str_pad((string) $index, 2, '0', STR_PAD_LEFT);
-        self::line("  \033[34m[WORKER-{$num}]\033[0m PID={$pid} started");
+        $num = str_pad((string)$index, 2, '0', STR_PAD_LEFT);
+        echo "  " . self::BLUE . "[WORKER-{$num}]" . self::RESET . " PID={$pid} started" . PHP_EOL;
     }
 
     public static function allReady(): void
     {
-        self::line("\n\033[32m[OK]\033[0m All workers are ready & listening...\n");
+        echo PHP_EOL . self::GREEN . "[OK] All workers are ready & listening..." . self::RESET . PHP_EOL . PHP_EOL;
     }
 
-    private static function line(string $text): void
+    public static function error(string $message): void
     {
-        fwrite(STDOUT, $text . PHP_EOL);
+        echo self::RED . "[ERROR] " . self::RESET . $message . PHP_EOL;
     }
 }

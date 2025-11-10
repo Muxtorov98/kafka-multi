@@ -7,7 +7,7 @@ use Muxtorov98\Kafka\AutoDiscovery;
 use Muxtorov98\Kafka\Consumer;
 use Muxtorov98\Kafka\KafkaOptions;
 use Muxtorov98\Kafka\Producer;
-use Muxtorov98\Kafka\Support\WorkerPrinter;
+use Muxtorov98\Kafka\WorkerPrinter;
 
 class KafkaWorkCommand extends Command
 {
