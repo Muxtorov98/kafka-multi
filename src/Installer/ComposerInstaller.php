@@ -89,20 +89,39 @@ final class ComposerInstaller
 
     private static function installSymfony($io, string $basePath): void
     {
-        $dir = $basePath . '/config/packages';
+        $bundlesFile = $basePath . '/config/bundles.php';
+
+        // 1. Bundle qo‘shish
+        $content = file_get_contents($bundlesFile);
+        if (!str_contains($content, "Muxtorov98\\Kafka\\Bridge\\Symfony\\KafkaBundle")) {
+            $bundleInsert = "    Muxtorov98\\Kafka\\Bridge\\Symfony\\KafkaBundle::class => ['all' => true],\n";
+            $content = preg_replace('/return \\[/','return [' . "\n" . $bundleInsert, $content);
+            file_put_contents($bundlesFile, $content);
+            $io->write("  ✅ Bundle added to config/bundles.php");
+        } else {
+            $io->write("  ⚠️ Bundle already exists, skipped.");
+        }
+
+        // 2. Config yaratish
+        $dir = $basePath . '/config';
         if (!is_dir($dir)) mkdir($dir, 0777, true);
 
         $configPath = $dir . '/kafka.php';
-
         if (file_exists($configPath)) {
-            $io->write("  ⚠️ config/packages/kafka.php mavjud, o‘tkazib yuborildi.");
+            $io->write("  ⚠️ config/kafka.php mavjud, o‘tkazib yuborildi.");
             return;
         }
 
         $content = self::getDefaultConfig('Symfony');
         file_put_contents($configPath, $content);
+        $io->write("  ✅ Yaratildi: config/kafka.php");
 
-        $io->write("  ✅ Yaratildi: config/packages/kafka.php");
+        // 3. Handlers folderi ham yaratilsa yaxshi
+        $handlersDir = $basePath . '/src/Kafka/Handlers';
+        if (!is_dir($handlersDir)) {
+            mkdir($handlersDir, 0777, true);
+            $io->write("  📁 Created: src/Kafka/Handlers (for your consumers)");
+        }
     }
 
     private static function getDefaultConfig(string $framework): string

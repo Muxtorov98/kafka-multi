@@ -14,7 +14,8 @@
       "Muxtorov98\\Kafka\\Support\\": "src/Support/",
       "Muxtorov98\\Kafka\\Bridge\\Yii2\\": "src/Bridge/Yii2/",
       "Muxtorov98\\Kafka\\Bridge\\Laravel\\": "src/Bridge/Laravel/",
-      "Muxtorov98\\Kafka\\Bridge\\Symfony\\": "src/Bridge/Symfony/"
+      "Muxtorov98\\Kafka\\Bridge\\Symfony\\": "src/Bridge/Symfony/",
+      "Muxtorov98\\Kafka\\Installer\\": "src/Installer/"
     },
     "exclude-from-classmap": [
       "src/Bridge/Laravel/Commands/"
@@ -28,11 +29,14 @@
     }
   },
   "scripts": {
-    "post-install-cmd": [
+    "post-package-install": [
       "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postInstall"
     ],
-    "post-update-cmd": [
-      "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postInstall"
+    "post-package-update": [
+      "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postUpdate"
+    ],
+    "post-autoload-dump": [
+      "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postAutoload"
     ]
   },
   "minimum-stability": "dev",
