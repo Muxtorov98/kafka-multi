@@ -29,16 +29,16 @@
     }
   },
   "scripts": {
-    "post-install-cmd": [
+    "post-package-install": [
       "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postInstall"
     ],
-    "post-update-cmd": [
+    "post-package-update": [
       "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postUpdate"
     ],
     "post-autoload-dump": [
       "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postAutoload"
     ],
-    "pre-remove-cmd": [
+    "pre-package-uninstall": [
       "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::preRemove"
     ]
   },
