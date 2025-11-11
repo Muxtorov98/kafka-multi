@@ -27,6 +27,14 @@
       ]
     }
   },
+  "scripts": {
+    "post-install-cmd": [
+      "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postInstall"
+    ],
+    "post-update-cmd": [
+      "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postInstall"
+    ]
+  },
   "minimum-stability": "dev",
   "prefer-stable": true
 }
