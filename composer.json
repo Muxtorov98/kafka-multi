@@ -14,7 +14,7 @@
       "Muxtorov98\\Kafka\\Support\\": "src/Support/",
       "Muxtorov98\\Kafka\\Bridge\\Yii2\\": "src/Bridge/Yii2/",
       "Muxtorov98\\Kafka\\Bridge\\Laravel\\": "src/Bridge/Laravel/",
-      "Muxtorov98\\Kafka\\Bridge\\Symfony\\": "src/Bridge/Symfony/",
+      "Muxtorov98\\Kafka\\Bridge\\Symfony\\": "src/Bridge/Symfony/"
     },
     "exclude-from-classmap": [
       "src/Bridge/Laravel/Commands/"
