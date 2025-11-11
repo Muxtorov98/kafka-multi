@@ -148,7 +148,7 @@ Topic: order-created (group=order-laravel, concurrency=1)
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Muxtorov98\Kafka\KafkaPublisher;
+use Muxtorov98\Kafka\Bridge\Laravel\KafkaPublisher;
 
 class KafkaPublishCommand extends Command
 {

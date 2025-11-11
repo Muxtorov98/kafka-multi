@@ -162,7 +162,7 @@ Topic: order-created (group=order-symfony, concurrency=1)
 
 namespace App\Command;
 
-use Muxtorov98\Kafka\KafkaPublisher;
+use Muxtorov98\Kafka\Bridge\Symfony\KafkaPublisher;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
