@@ -54,6 +54,8 @@ php -m | grep rdkafka
 ---
 ## 🧱 Framework hujjatlari
 
+---
+
 🧱 **Symfony**  
 ➡️ [SYMFONY-README.md](https://github.com/Muxtorov98/kafka-multi/blob/main/SYMFONY-README.md)
 
