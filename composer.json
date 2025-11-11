@@ -30,18 +30,15 @@
   },
   "scripts": {
     "post-install-cmd": [
-      "@php -r \"echo \\\"\\n[KAFKA-MULTI] ▶ post-install...\\n\\\";\"",
       "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postInstall"
     ],
     "post-update-cmd": [
-      "@php -r \"echo \\\"\\n[KAFKA-MULTI] ▶ post-update...\\n\\\";\"",
       "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postUpdate"
     ],
     "post-autoload-dump": [
       "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::postAutoload"
     ],
     "pre-remove-cmd": [
-      "@php -r \"echo \\\"\\n[KAFKA-MULTI] ❗ Removing package...\\n\\\";\"",
       "Muxtorov98\\Kafka\\Installer\\ComposerInstaller::preRemove"
     ]
   },
