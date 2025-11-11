@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace Muxtorov98\Kafka\Bridge\Symfony;
+namespace Muxtorov98\Kafka\Bridge\Laravel;
 
 use Muxtorov98\Kafka\KafkaPublisher as CorePublisher;
 
