@@ -7,23 +7,51 @@ use Composer\Script\Event;
 
 final class ComposerInstaller
 {
+    /** RUNNERS (silent) */
     public static function postInstall(Event $event): void { self::run($event, 'install'); }
-    public static function postUpdate(Event $event): void  { self::run($event, 'update');  }
-
+    public static function postUpdate(Event $event): void  { self::run($event, 'update'); }
     public static function postAutoload(Event $event): void
     {
-        $io = $event->getIO();
+        // quiet, but leave a tiny trace for debugging
         $fw = self::detectFramework(getcwd());
-        if ($fw) $io->write("<info>[Kafka-Multi]</info> Autoload detected → {$fw}");
+        if ($fw) { $event->getIO()->write("<info>[Kafka-Multi]</info> autoload → {$fw}"); }
+    }
+    public static function preRemove(Event $event): void   { self::clean($event); }
+
+    /** DETECT */
+    private static function detectFramework(string $base): ?string
+    {
+        return match (true) {
+            is_file($base.'/yii')         => 'Yii2',
+            is_file($base.'/artisan')     => 'Laravel',
+            is_file($base.'/bin/console') => 'Symfony',
+            default                       => null
+        };
     }
 
-    public static function preRemove(Event $event): void
+    /** MAIN (require/update) — NO PROMPTS */
+    private static function run(Event $event, string $phase): void
     {
         $io  = $event->getIO();
         $cwd = getcwd();
         $fw  = self::detectFramework($cwd);
+        if (!$fw) { $io->write("<comment>[Kafka-Multi]</comment> framework topilmadi ({$phase}), skip."); return; }
 
-        if (!$fw) { $io->write("<comment>[Kafka-Multi]</comment> Framework unknown. Skipping cleanup."); return; }
+        // Always try to install (idempotent)
+        match ($fw) {
+            'Yii2'    => self::installYii2($io, $cwd),
+            'Laravel' => self::installLaravel($io, $cwd),
+            'Symfony' => self::installSymfony($io, $cwd),
+        };
+    }
+
+    /** CLEAN (remove) — FULL (R3) */
+    private static function clean(Event $event): void
+    {
+        $io  = $event->getIO();
+        $cwd = getcwd();
+        $fw  = self::detectFramework($cwd);
+        if (!$fw) { $io->write("<comment>[Kafka-Multi]</comment> framework unknown on remove, skip."); return; }
 
         match ($fw) {
             'Yii2'    => self::removeYii2($io, $cwd),
@@ -32,125 +60,154 @@ final class ComposerInstaller
         };
     }
 
-    private static function run(Event $event, string $type): void
+    /* ======================== YII2 ======================== */
+
+    private static function installYii2($io, string $base): void
     {
-        $io  = $event->getIO();
-        $cwd = getcwd();
-        $fw  = self::detectFramework($cwd);
-
-        if (!$fw) { $io->write("<comment>[Kafka-Multi]</comment> Framework not detected. Skipped."); return; }
-
-        $question = match ($fw) {
-            'Yii2'    => "Create kafka.php config for Yii2? (Y/n)",
-            'Laravel' => "Create kafka.php config for Laravel? (Y/n)",
-            'Symfony' => "Add KafkaBundle + create kafka.php for Symfony? (Y/n)",
-        };
-
-        if (!$io->askConfirmation("  $question ", true)) return;
-
-        match ($fw) {
-            'Yii2'    => self::installYii2($io, $cwd),
-            'Laravel' => self::installLaravel($io, $cwd),
-            'Symfony' => self::installSymfony($io, $cwd),
-        };
-    }
-
-    private static function detectFramework(string $path): ?string
-    {
-        return match (true) {
-            file_exists($path . '/yii')         => 'Yii2',
-            file_exists($path . '/artisan')     => 'Laravel',
-            file_exists($path . '/bin/console') => 'Symfony',
-            default                             => null
-        };
-    }
-
-    // ---------- Yii2 ----------
-    private static function installYii2($io, string $basePath): void
-    {
-        $config = $basePath . '/common/config/kafka.php';
-        if (!file_exists($config)) {
-            file_put_contents($config, self::getDefaultConfig('Yii2'));
-            $io->write("  ✅ Created: common/config/kafka.php");
+        // config
+        $config = $base.'/common/config/kafka.php';
+        if (!is_file($config)) {
+            self::mkdirp(dirname($config));
+            file_put_contents($config, self::configFor('Yii2'));
+            $io->write("  ✅ Yii2: created common/config/kafka.php");
         }
-        $dir = $basePath . '/common/kafka/handlers';
-        if (!is_dir($dir)) { mkdir($dir, 0777, true); $io->write("  📁 Created: common/kafka/handlers"); }
-    }
-    private static function removeYii2($io, string $basePath): void
-    {
-        $f = $basePath . '/common/config/kafka.php';
-        if (file_exists($f)) { unlink($f); $io->write("  🧹 Removed: common/config/kafka.php"); }
-    }
 
-    // ---------- Laravel ----------
-    private static function installLaravel($io, string $basePath): void
-    {
-        $config = $basePath . '/config/kafka.php';
-        if (!file_exists($config)) {
-            file_put_contents($config, self::getDefaultConfig('Laravel'));
-            $io->write("  ✅ Created: config/kafka.php");
+        // handlers dir
+        $handlers = $base.'/common/kafka/Handlers';
+        if (!is_dir($handlers)) {
+            self::mkdirp($handlers);
+            $io->write("  📁 Yii2: created common/kafka/Handlers");
         }
-        $dir = $basePath . '/app/Kafka/Handlers';
-        if (!is_dir($dir)) { mkdir($dir, 0777, true); $io->write("  📁 Created: app/Kafka/Handlers"); }
-    }
-    private static function removeLaravel($io, string $basePath): void
-    {
-        $f = $basePath . '/config/kafka.php';
-        if (file_exists($f)) { unlink($f); $io->write("  🧹 Removed: config/kafka.php"); }
     }
 
-    // ---------- Symfony ----------
-    private static function installSymfony($io, string $basePath): void
+    private static function removeYii2($io, string $base): void
     {
-        // 1) bundle qo‘shish
-        $bundlesFile = $basePath . '/config/bundles.php';
+        // config
+        self::unlinkQuiet($base.'/common/config/kafka.php', "  🧹 Yii2: removed common/config/kafka.php", $io);
+        // handlers (FULL clean)
+        self::rmdirQuiet($base.'/common/kafka/Handlers', "  🧹 Yii2: removed common/kafka/Handlers", $io);
+    }
+
+    /* ======================== LARAVEL ======================== */
+
+    private static function installLaravel($io, string $base): void
+    {
+        // config
+        $config = $base.'/config/kafka.php';
+        if (!is_file($config)) {
+            self::mkdirp(dirname($config));
+            file_put_contents($config, self::configFor('Laravel'));
+            $io->write("  ✅ Laravel: created config/kafka.php");
+        }
+
+        // handlers dir
+        $handlers = $base.'/app/Kafka/Handlers';
+        if (!is_dir($handlers)) {
+            self::mkdirp($handlers);
+            $io->write("  📁 Laravel: created app/Kafka/Handlers");
+        }
+    }
+
+    private static function removeLaravel($io, string $base): void
+    {
+        // config
+        self::unlinkQuiet($base.'/config/kafka.php', "  🧹 Laravel: removed config/kafka.php", $io);
+        // handlers (FULL clean)
+        self::rmdirQuiet($base.'/app/Kafka/Handlers', "  🧹 Laravel: removed app/Kafka/Handlers", $io);
+    }
+
+    /* ======================== SYMFONY ======================== */
+
+    private static function installSymfony($io, string $base): void
+    {
+        // bundle add
+        $bundlesFile = $base.'/config/bundles.php';
         if (is_file($bundlesFile)) {
-            $content = file_get_contents($bundlesFile);
-            if (!str_contains($content, "Muxtorov98\\Kafka\\Bridge\\Symfony\\KafkaBundle")) {
-                $insert = "    Muxtorov98\\Kafka\\Bridge\\Symfony\\KafkaBundle::class => ['all' => true],\n";
-                $content = preg_replace('/return \\[/', "return [\n{$insert}", $content);
-                file_put_contents($bundlesFile, $content);
-                $io->write("  ✅ Added KafkaBundle to config/bundles.php");
+            $c = file_get_contents($bundlesFile);
+            $needle = "Muxtorov98\\Kafka\\Bridge\\Symfony\\KafkaBundle::class => ['all' => true],";
+            if (!str_contains((string)$c, $needle)) {
+                $insert = "    {$needle}\n";
+                $c = preg_replace('/return\s*\[/', "return [\n{$insert}", (string)$c, 1);
+                if (is_string($c) && $c !== '') {
+                    file_put_contents($bundlesFile, $c);
+                    $io->write("  ✅ Symfony: added KafkaBundle to config/bundles.php");
+                }
             }
         }
 
-        // 2) config/kafka.php
-        $config = $basePath . '/config/kafka.php';
-        if (!file_exists($config)) {
-            file_put_contents($config, self::getDefaultConfig('Symfony'));
-            $io->write("  ✅ Created: config/kafka.php");
+        // config
+        $config = $base.'/config/kafka.php';
+        if (!is_file($config)) {
+            self::mkdirp(dirname($config));
+            file_put_contents($config, self::configFor('Symfony'));
+            $io->write("  ✅ Symfony: created config/kafka.php");
         }
 
-        // 3) handlers dir
-        $dir = $basePath . '/src/Kafka/Handlers';
-        if (!is_dir($dir)) { mkdir($dir, 0777, true); $io->write("  📁 Created: src/Kafka/Handlers"); }
-    }
-    private static function removeSymfony($io, string $basePath): void
-    {
-        $f = $basePath . '/config/kafka.php';
-        if (file_exists($f)) { unlink($f); $io->write("  🧹 Removed: config/kafka.php"); }
-
-        $bundlesFile = $basePath . '/config/bundles.php';
-        if (is_file($bundlesFile)) {
-            $c = file_get_contents($bundlesFile);
-            $c = str_replace("Muxtorov98\\Kafka\\Bridge\\Symfony\\KafkaBundle::class => ['all' => true],", "", (string)$c);
-            file_put_contents($bundlesFile, $c);
-            $io->write("  🧹 Removed: KafkaBundle from config/bundles.php");
+        // handlers dir
+        $handlers = $base.'/src/Kafka/Handlers';
+        if (!is_dir($handlers)) {
+            self::mkdirp($handlers);
+            $io->write("  📁 Symfony: created src/Kafka/Handlers");
         }
     }
 
-    // ---------- Default config (commit doc bilan) ----------
-    private static function getDefaultConfig(string $framework): string
+    private static function removeSymfony($io, string $base): void
     {
-        $ns = match ($framework) {
+        // config
+        self::unlinkQuiet($base.'/config/kafka.php', "  🧹 Symfony: removed config/kafka.php", $io);
+
+        // bundle remove
+        $bundles = $base.'/config/bundles.php';
+        if (is_file($bundles)) {
+            $c = (string)file_get_contents($bundles);
+            $c = str_replace("Muxtorov98\\Kafka\\Bridge\\Symfony\\KafkaBundle::class => ['all' => true],", '', $c);
+            file_put_contents($bundles, $c);
+            $io->write("  🧹 Symfony: removed KafkaBundle from config/bundles.php");
+        }
+
+        // handlers (FULL clean)
+        self::rmdirQuiet($base.'/src/Kafka/Handlers', "  🧹 Symfony: removed src/Kafka/Handlers", $io);
+    }
+
+    /* ======================== HELPERS ======================== */
+
+    private static function mkdirp(string $dir): void
+    {
+        if (!is_dir($dir)) { @mkdir($dir, 0777, true); }
+    }
+    private static function unlinkQuiet(string $file, string $msg, $io): void
+    {
+        if (is_file($file)) { @unlink($file); $io->write($msg); }
+    }
+    private static function rmdirQuiet(string $dir, string $msg, $io): void
+    {
+        if (!is_dir($dir)) return;
+        $iter = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($iter as $f) {
+            $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+        }
+        @rmdir($dir);
+        $io->write($msg);
+    }
+
+    /* ======================== CONFIG TEMPLATES ======================== */
+
+    private static function configFor(string $fw): string
+    {
+        $ns = match ($fw) {
             'Yii2'    => "['common\\\\kafka\\\\handlers\\\\']",
             'Laravel' => "['App\\\\Kafka\\\\Handlers\\\\']",
             'Symfony' => "['App\\\\Kafka\\\\Handlers\\\\']",
+            default   => "[]"
         };
-        $paths = match ($framework) {
-            'Yii2'    => "[Yii::getAlias('@common/kafka/handlers')]",
+        $paths = match ($fw) {
+            'Yii2'    => "[Yii::getAlias('@common/kafka/Handlers')]",
             'Laravel' => "[base_path('app/Kafka/Handlers')]",
             'Symfony' => "[dirname(__DIR__) . '/src/Kafka/Handlers']",
+            default   => "[]"
         };
 
         return <<<PHP
@@ -159,62 +216,57 @@ final class ComposerInstaller
 /**
  * Kafka configuration
  *
- * 📌 Ikki qatlamli konfiguratsiya:
- * ─ 'kafka' ichidagi native parametrlar to'g'ridan-to'g'ri librdkafka ga beriladi
- * ─ qolgan custom parametrlar (middlewares, retry, discovery, DLQ) faqat paket kodida ishlatiladi
+ * 📌 Ikki qatlam:
+ * 1) 'kafka' ichidagi native parametrlar → bevosita librdkafka'ga uzatiladi
+ * 2) custom parametrlar (middlewares, retry, discovery, DLQ) → faqat paket ichida ishlatiladi
  *
- * 🔎 Commit haqida:
- * 'enable.auto.commit' = true bo'lsa, offsetlar avtomatik commit qilinadi
- * Manual commit rejimi uchun consumer.kafka ichida 'enable.auto.commit' => 'false' qilib, paket manual commitni yoqadi
+ * 🔎 Commit:
+ *  - 'enable.auto.commit' = 'true' → avtomatik offset commit
+ *  - Agar manual commit kerak bo'lsa, 'enable.auto.commit' = 'false' qilib qo'ying
  */
 
 return [
 
-    // ✅ Kafka brokerlar ro'yxati
-    'brokers' => 'kafka:9092',
+    // ✅ Kafka broker(lar)
+    'brokers' => getenv('KAFKA_BROKERS') ?: 'kafka:9092',
 
     // ---------- Consumer ----------
     'consumer' => [
         'kafka' => [
-            // 🔁 Offset commit rejimi: true → avtomatik; false → manual (paket commit qiladi)
             'enable.auto.commit' => 'true',
-            // 🎯 Yangi group uchun o'qishni qayerdan boshlash
             'auto.offset.reset'  => 'earliest',
+            // misollar:
+            // 'enable.partition.eof' => 'true',
+            // 'socket.keepalive.enable' => 'true',
         ],
-        // Bir batchda nechta xabar iste'mol qilinadi
-        'batch_size' => 1,
-        // Paket middlewares (logging, metrics va boshqalar)
-        'middlewares' => [],
+        'batch_size'  => 1,
+        'middlewares' => [
+            // \\App\\Kafka\\Middlewares\\LoggingMiddleware::class
+        ],
     ],
 
     // ---------- Producer ----------
     'producer' => [
         'kafka' => [
-            // Acknowledgement kafolat darajasi
             'acks'             => 'all',
-            // Siqish algoritmi: lz4 (tez + kichik)
             'compression.type' => 'lz4',
-            // Batch uchun kichik kechiktirish
             'linger.ms'        => '1',
         ],
-        'middlewares' => [],
+        'middlewares' => [
+            // \\App\\Kafka\\Middlewares\\ProducerEncryptMiddleware::class
+        ],
     ],
 
     // ---------- Retry / DLQ ----------
     'retry' => [
-        // Handler ichida xatolik bo'lsa necha marta qayta uriniladi
         'max_attempts' => 3,
-        // Har urinish orasida kutish (ms)
         'backoff_ms'   => 500,
-        // DLQ: manba topic nomiga qo'shiladigan suffiks
         'dlq_suffix'   => '-dlq',
     ],
 
     // ---------- Auto-discovery ----------
     'discovery' => [
-        // Handler klasslarining namespace'lari
         'namespaces' => {$ns},
-        // Handler fayllari joylashgan yo'llar
         'paths'      => {$paths},
     ],
 
