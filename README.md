@@ -1,7 +1,6 @@
-┌─────────────────────────────────────────────┐
-│  ⚡ MUXTOROV98 / KAFKA MULTI                 │
-│  Universal Kafka for PHP (Yii2 • Laravel • Symfony) │
-└─────────────────────────────────────────────┘
+
+### ⚡ MUXTOROV98 / KAFKA MULTI
+- Universal Kafka for PHP (Yii2 • Laravel • Symfony)
 
 ## 🚀 Installation
 
@@ -50,3 +49,16 @@ sudo docker-php-ext-install pcntl  # agar dockerda bo‘lmasa
 php -m | grep rdkafka
 ```
 - Agar rdkafka va pcntl ko‘rinsa — hammasi tayyor ✅
+
+
+---
+## 🧱 Framework hujjatlari
+
+🧱 **Symfony**  
+➡️ [SYMFONY-README.md](https://github.com/Muxtorov98/kafka-multi/blob/main/SYMFONY-README.md)
+
+🐘 **Laravel**  
+➡️ [LARAVEL-README.md](https://github.com/Muxtorov98/kafka-multi/blob/main/LARAVEL-README.md)
+
+🐉 **Yii2**  
+➡️ [YII2-README.md](https://github.com/Muxtorov98/kafka-multi/blob/main/YII-README.md)
